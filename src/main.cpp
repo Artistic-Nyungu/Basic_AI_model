@@ -1,133 +1,62 @@
 #include <iostream>
-#include <fstream>
-#include <string>
-#include <vector>
-#include <unordered_map>
 #include <cmath>
-#include <random>
-#include <algorithm>
-#include <sstream>
 
 // Hyperparameters
-const int embeddingDim = 100;
-const int windowSize = 5;
-const int numNegativeSamples = 5;
-const float learningRate = 0.01;
-const int numIterations = 100;
+const int NODES_PER_LAYER[] = {784, 6, 4, 6, 10};
+const float LEARNING_RATE = 0.01;
+const int MAX_ITERATIONS = 500;
 
-// Vocabulary and word embeddings
-std::unordered_map<std::string, std::vector<float>> wordEmbeddings;
-std::unordered_map<std::string, int> wordIndexMap;
-std::vector<std::string> vocabulary;
-
-// Data structures for training
-std::vector<std::string> trainingData;
-
-// Utility function to normalize a vector
-void normalizeVector(std::vector<float>& vec) {
-    float norm = 0.0;
-    for (float val : vec) {
-        norm += val * val;
+/// Utility function to get the magnitude of an array
+/// arr - array to be normalized
+/// length - the length of the array
+/// returns - a float representing the magnitude
+float magnitude(const float* arr, int length){
+    float squareSum = 0.0;
+    for (int i=0; i<length; i++) {
+        squareSum += arr[i] * arr[i];
     }
-    norm = std::sqrt(norm);
-    for (float& val : vec) {
-        val /= norm;
-    }
+    return std::sqrt(squareSum);
 }
 
-// Skip-gram training
-void trainWordEmbeddings() {
-    std::random_device rd;
-    std::mt19937 gen(rd());
-    std::uniform_real_distribution<> dis(-0.5 / embeddingDim, 0.5 / embeddingDim);
-
-    // Initialize word embeddings randomly
-    for (const std::string& word : vocabulary) {
-        std::vector<float> embedding;
-        for (int i = 0; i < embeddingDim; ++i) {
-            embedding.push_back(dis(gen));
-        }
-        wordEmbeddings[word] = embedding;
+/// Utility function to normalize an array
+/// arr - array to be normalized
+/// length - the length of the array
+/// returns - an array with the same length as the original (Memory has to be managed)
+float* normalize(const float* arr, int length){
+    float mag = magnitude(arr, length);
+    float* normalized = new float[length];
+    for (int i=0; i<length; i++) {
+        normalized[i] = arr[i] / mag;
     }
 
-    // Training loop
-    for (int iter = 0; iter < numIterations; ++iter) {
-        for (const std::string& targetWord : trainingData) {
-            int targetIndex = wordIndexMap[targetWord];
-            std::vector<float>& targetEmbedding = wordEmbeddings[targetWord];
-
-            for (int contextPos = -windowSize; contextPos <= windowSize; ++contextPos) {
-                if (contextPos == 0 || targetIndex + contextPos < 0 || targetIndex + contextPos >= vocabulary.size()) {
-                    continue;
-                }
-
-                const std::string& contextWord = vocabulary[targetIndex + contextPos];
-                std::vector<float>& contextEmbedding = wordEmbeddings[contextWord];
-
-                // Positive example
-                float dotProduct = 0.0;
-                for (int i = 0; i < embeddingDim; ++i) {
-                    dotProduct += targetEmbedding[i] * contextEmbedding[i];
-                }
-                float prediction = 1.0 / (1.0 + std::exp(-dotProduct));
-                float error = prediction - 1.0;
-
-                // Update target embedding
-                for (int i = 0; i < embeddingDim; ++i) {
-                    targetEmbedding[i] -= learningRate * error * contextEmbedding[i];
-                }
-
-                // Negative examples (randomly sampled)
-                for (int k = 0; k < numNegativeSamples; ++k) {
-                    int negativeIndex = gen() % vocabulary.size();
-                    const std::string& negativeWord = vocabulary[negativeIndex];
-                    std::vector<float>& negativeEmbedding = wordEmbeddings[negativeWord];
-
-                    dotProduct = 0.0;
-                    for (int i = 0; i < embeddingDim; ++i) {
-                        dotProduct += targetEmbedding[i] * negativeEmbedding[i];
-                    }
-                    prediction = 1.0 / (1.0 + std::exp(-dotProduct));
-                    error = prediction;
-
-                    // Update target embedding
-                    for (int i = 0; i < embeddingDim; ++i) {
-                        targetEmbedding[i] -= learningRate * error * negativeEmbedding[i];
-                    }
-                }
-            }
-        }
-    }
+    return normalized;
 }
 
 int main() {
-    // Read training data
-    std::stringstream file;
-    file << "Hinkwaswo ndzi swi endlaka ndzi swi endla hikokwalaho ka ku swa boha leswaku ndzi swi endla. Leswi nga tano ndzi ta tsakela ku va ndzi nga voniwi nandzu loko ni endla hi ndlela leyi";
-    std::string word;
-    while (file >> word) {
-        trainingData.push_back(word);
-    }
-
-    // Build vocabulary
-    std::sort(trainingData.begin(), trainingData.end());
-    trainingData.erase(std::unique(trainingData.begin(), trainingData.end()), trainingData.end());
-    for (const std::string& word : trainingData) {
-        wordIndexMap[word] = vocabulary.size();
-        vocabulary.push_back(word);
-    }
-
-    // Train word embeddings
-    trainWordEmbeddings();
-
-    // Output word embeddings
-    for (const auto& pair : wordEmbeddings) {
-        std::cout << pair.first << ": ";
-        for (float val : pair.second) {
-            std::cout << val << " ";
+    int _nNodes, _nWeights, _nBiases = 0;
+    int nplLength = sizeof(NODES_PER_LAYER)/sizeof(int);
+    for(int i=0; i < nplLength; i++){
+        _nNodes += NODES_PER_LAYER[i];  // Count all the nodes
+        if(i < nplLength - 1){
+            _nWeights += NODES_PER_LAYER[i] * NODES_PER_LAYER[i+1]; // Count all the weights
+            _nBiases += NODES_PER_LAYER[i+1]; // Count all the biases
         }
-        std::cout << std::endl;
     }
+
+    // All layer features will be mapped to a 1D array
+    // Features of one layer will be sequential until the nth of the layer,
+    // then the next will belong to the following layer
+    float* _nodes = new float[_nNodes]; 
+    float* _weights = new float[_nWeights];
+    float* _biases = new float[_nBiases];
+
+    std::cout << "Hello World!" << std::endl;
+
+    // Clean
+    delete[] _nodes;
+    delete[] _weights;
+    delete[] _biases;
+    _nodes = _weights = _biases = nullptr;
 
     return 0;
 }
