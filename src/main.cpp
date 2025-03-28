@@ -1,6 +1,7 @@
 #include <iostream>
 #include <fstream>
 #include <cmath>
+#include <ctime>
 #include <algorithm>
 #include "glad/glad.h"
 #include <GLFW/glfw3.h>
@@ -65,15 +66,17 @@ struct range{
 };
 
 struct forwardingLayer{
-    range nodes;
+    range neurons;
     range weights;
     range biases;
-    int srcNodes;   // Nodes in the previous (source) layer
-    int dstNodes;   // Nodes in the current (destination) layer
+    int srcNeurons;   // Neurons in the previous (source) layer
+    int dstNeurons;   // Neurons in the current (destination) layer
 };
 
 
 int main() {
+    srand(time(nullptr));
+
     // Initialize library
     if(!glfwInit())
     {
@@ -143,10 +146,6 @@ int main() {
             std::string contents((std::istreambuf_iterator<char>(shaderFile)), std::istreambuf_iterator<char>());
             const char* shaderSource = contents.c_str();
 
-            #ifdef _DEBUG
-                printf("Shader source (%s): \n%s\n", glGetString(sh.type), shaderSource);
-            #endif
-
             // Compile shader
             auto shader = glCreateShader(sh.type);
             glShaderSource(shader, 1, &shaderSource, nullptr);
@@ -158,6 +157,10 @@ int main() {
                 char infoLog[512];
                 glGetShaderInfoLog(shader, 512, nullptr, infoLog);
                 std::cerr << "ERROR::SHADER_COMPILATION_FAILED\n" << infoLog << std::endl;
+                
+                #ifdef _DEBUG
+                    printf("Shader source (%s): \n%s\n", glGetString(sh.type), shaderSource);
+                #endif
             }
             sh.type == GL_COMPUTE_SHADER ? glAttachShader(_computeModule, shader) : glAttachShader(_renderModule, shader);
             glDeleteShader(shader);
@@ -181,27 +184,31 @@ int main() {
             std::cerr << "ERROR::RENDER_PROGRAM_LINKING_FAILED\n" << infoLog << std::endl;
         }
     }
+
+    // Set renderer Uniforms
+    // glUniform1f(glGetUniformLocation(_renderModule, "minValNeurons"), 0.f);
+    // glUniform1f(glGetUniformLocation(_renderModule, "maxValNeurons"), 1.f);
     
     // NN
-    int _nNodes = 0, _nWeights = 0, _nBiases = 0;
+    int _nNeurons = 0, _nWeights = 0, _nBiases = 0;
     int nplLength = sizeof(NODES_PER_LAYER)/sizeof(int);
     forwardingLayer* _forwardingLayers = new forwardingLayer[nplLength - 1];
     for(int i=0; i < nplLength; i++){
-        _nNodes += NODES_PER_LAYER[i];  // Count all the nodes
+        _nNeurons += NODES_PER_LAYER[i];  // Count all the neurons
         if(i < nplLength - 1){
-            int srcNodes = NODES_PER_LAYER[i];
-            int dstNodes = NODES_PER_LAYER[i+1];
-            int weights = srcNodes * dstNodes;
+            int srcNeurons = NODES_PER_LAYER[i];
+            int dstNeurons = NODES_PER_LAYER[i+1];
+            int weights = srcNeurons * dstNeurons;
 
             _forwardingLayers[i] = {
-                {_nNodes, _nNodes + dstNodes},
+                {_nNeurons, _nNeurons + dstNeurons},
                 {_nWeights, _nWeights + weights},
-                {_nBiases, _nBiases + dstNodes},
-                srcNodes,
-                dstNodes
+                {_nBiases, _nBiases + dstNeurons},
+                srcNeurons,
+                dstNeurons
             };
             _nWeights += weights; // Count all the weights
-            _nBiases += dstNodes; // Count all the biases
+            _nBiases += dstNeurons; // Count all the biases
         }
     }
 
@@ -209,22 +216,31 @@ int main() {
     // All layer features will be mapped to a 1D array
     // Features of one layer will be sequential until the nth of the layer,
     // then the next will belong to the following layer
-    float* _nodes = new float[_nNodes]; 
+    float* _neurons = new float[_nNeurons]; 
     float* _weights = new float[_nWeights];
     float* _biases = new float[_nBiases]{0};
 
     // Initialize weights to random values between -5 & 5
-    for(int i=0; i<_nWeights; i++)
+    float minWeight = FLT_MAX, maxWeight = FLT_MIN;
+    for(int i=0; i<_nWeights; i++){
         _weights[i] = static_cast<float>(rand()) / RAND_MAX * 10.0f - 5.0f;
+        if(minWeight > _weights[i])
+            minWeight = _weights[i];
+        if(maxWeight < _weights[i])
+            maxWeight = _weights[i];
+    }
+
+    glUniform1f(glGetUniformLocation(_renderModule, "minValWeights"), minWeight);
+    glUniform1f(glGetUniformLocation(_renderModule, "maxValWeights"), maxWeight);
 
 
-    // Copy nodes, weights & biases to SSBO
+    // Copy neurons, weights & biases to SSBO
     const int nBuffers = 4;
     unsigned int _SSBOs[nBuffers];
     glGenBuffers(nBuffers, _SSBOs);
-    // Nodes
+    // Neurons
     glBindBuffer(GL_SHADER_STORAGE_BUFFER, _SSBOs[0]);
-    glBufferData(GL_SHADER_STORAGE_BUFFER, _nNodes * sizeof(float), _nodes, GL_DYNAMIC_DRAW);
+    glBufferData(GL_SHADER_STORAGE_BUFFER, _nNeurons * sizeof(float), _neurons, GL_DYNAMIC_DRAW);
     glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 0, _SSBOs[0]);
     glBindBuffer(GL_SHADER_STORAGE_BUFFER, 0);
     // Weights
@@ -272,8 +288,17 @@ int main() {
         glViewport(pos.x, pos.y, wSize.x, wSize.y);
 
         // Rendering commands here
+        ImGui::SetNextWindowPos(ImVec2(0, 0), ImGuiCond_Always);
+        ImGui::SetNextWindowSize(io.DisplaySize, ImGuiCond_Always);
+        ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(0, 0));
+        ImGui::Begin("FullScreenWindow", nullptr,
+            ImGuiWindowFlags_NoTitleBar |
+            ImGuiWindowFlags_NoResize |
+            ImGuiWindowFlags_NoMove |
+            ImGuiWindowFlags_NoScrollbar |
+            ImGuiWindowFlags_NoScrollWithMouse);
         ImGui::BeginTable("Basic AI Model", 2);
-        ImGui::TableSetupColumn("Controls", ImGuiTableColumnFlags_NoResize);
+        ImGui::TableSetupColumn("Controls");
         ImGui::TableSetupColumn("Visuals");
         ImGui::TableHeadersRow();
         ImGui::TableNextColumn();
@@ -282,7 +307,9 @@ int main() {
         ImGui::TableNextColumn();
             pos = ImGui::GetCursorScreenPos();
             ImVec2 size = ImGui::GetContentRegionAvail();
-            glViewport(pos.x, pos.y, size.x, size.y);
+            int w, h;
+            glfwGetFramebufferSize(_window, &w, &h);
+            glViewport(pos.x, h - pos.y - size.y, size.x, size.y);
 
             // Compute
             if(isTraining) {
@@ -293,20 +320,23 @@ int main() {
                     glMemoryBarrier(GL_SHADER_STORAGE_BARRIER_BIT | GL_TEXTURE_FETCH_BARRIER_BIT);
                 }
             }
-
-            // Show visual representation of NN
-            // glPolygonMode(GL_FRONT, GL_FILL);
-            glUseProgram(_renderModule);
-            glBindVertexArray(_VAO);
-            // glActiveTexture(GL_TEXTURE0);
-            // glBindTexture(GL_TEXTURE_BUFFER, _nodeTexBuffer);
-            glDrawArrays(GL_TRIANGLES, 0, 6);
-            // glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
         ImGui::EndTable();
+        ImGui::End();
+        ImGui::PopStyleVar();
 
 
         ImGui::Render();
         ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
+
+            // Show visual representation of NN
+            // glPolygonMode(GL_FRONT, GL_FILL);
+            glUseProgram(_renderModule);
+            glUniform1f(glGetUniformLocation(_renderModule, "aspectRatio"), size.x/size.y);
+            glBindVertexArray(_VAO);
+            // glActiveTexture(GL_TEXTURE0);
+            // glBindTexture(GL_TEXTURE_BUFFER, _neuronTexBuffer);
+            glDrawArrays(GL_TRIANGLES, 0, 6);
+            // glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
 
         /* Swap front and back buffers */
         glfwSwapBuffers(_window);
@@ -315,11 +345,11 @@ int main() {
     }
 
     // Clean
-    delete[] _nodes;
+    delete[] _neurons;
     delete[] _weights;
     delete[] _biases;
     delete[] _forwardingLayers;
-    _nodes = _weights = _biases = nullptr;
+    _neurons = _weights = _biases = nullptr;
     _forwardingLayers = nullptr;
 
     // Clean glfw

@@ -9,14 +9,14 @@ struct Range {
 };
 
 struct ForwardingLayer {
-    Range nodes;
+    Range neurons;
     Range weights;
     Range biases;
-    int srcNodes;
-    int dstNodes;
+    int srcNeurons;
+    int dstNeurons;
 };
 
-layout(std430, binding = 0) buffer NodesBuffer { float nodes[]; };
+layout(std430, binding = 0) buffer NeuronsBuffer { float neurons[]; };
 layout(std430, binding = 1) buffer WeightsBuffer { float weights[]; };
 layout(std430, binding = 2) buffer BiasesBuffer { float biases[]; };
 layout(std430, binding = 3) buffer ForwardingLayersBuffer { ForwardingLayer layers[]; };
@@ -27,19 +27,19 @@ void main() {
     int neuronIdx = int(gl_GlobalInvocationID.x);
 
     ForwardingLayer layer = layers[layerIdx];
-    if (neuronIdx >= layer.dstNodes) return;
+    if (neuronIdx >= layer.dstNeurons) return;
 
-    int dstNodeIdx = layer.nodes.begin + neuronIdx;
+    int dstNeuronIdx = layer.neurons.begin + neuronIdx;
     float sum = 0.0f;
 
-    // Previous layer's nodes start at current begin minus srcNodes
-    int prevLayerStart = layer.nodes.begin - layer.srcNodes;
-    for (int i = 0; i < layer.srcNodes; i++) {
-        int srcNodeIdx = prevLayerStart + i;
-        int weightIdx = layer.weights.begin + neuronIdx * layer.srcNodes + i;
-        sum += nodes[srcNodeIdx] * weights[weightIdx];
+    // Previous layer's neurons start at current begin minus srcNeurons
+    int prevLayerStart = layer.neurons.begin - layer.srcNeurons;
+    for (int i = 0; i < layer.srcNeurons; i++) {
+        int srcNeuronIdx = prevLayerStart + i;
+        int weightIdx = layer.weights.begin + neuronIdx * layer.srcNeurons + i;
+        sum += neurons[srcNeuronIdx] * weights[weightIdx];
     }
 
     sum += biases[layer.biases.begin + neuronIdx];
-    nodes[dstNodeIdx] = log(1.0f + exp(sum)); // Softplus activation
+    neurons[dstNeuronIdx] = log(1.0f + exp(sum)); // Softplus activation
 }
