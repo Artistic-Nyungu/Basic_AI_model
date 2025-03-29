@@ -59,5 +59,18 @@ void main() {
     // Choose between blue and magenta, then choose opacity, the determine whether to display or not (!isPadding && !isInputLayer)
     FragColor = mix(FragColor, mix(FragColor, mix(vec4(1.f, 0.f, 1.f, 1.f), vec4(0.f, 0.f, 1.f, 1.f), isValidLayer), float(layerIdx + 1)/float(layersCount + 1)), (1.f - isPadding) * (1.f - isInputLayer));
 
-    // TODO: Get Neuron Index on current layer
+
+    // Get Neuron Index on current layer
+    float neuronsStart = uvStart.y;
+    float neuronsEnd = uvEnd.y;
+    // if isInputLayer => srcNeurons, !isInputLayer => dstNeurons
+    int neuronsCount = int(isInputLayer * layers[layerIdx].srcNeurons + (1.f - isInputLayer) * layers[layerIdx].dstNeurons);
+    float neuronBlockHeight = (neuronsEnd - neuronsStart)/float(neuronsCount);
+    int nodeIdx = int((aspectUV.y - neuronsStart) / neuronBlockHeight);
+
+    // Draw neuron blocks
+    // if (isInputLayer || (aspectUV.x > layerEnd - neuronRadius * 2  && aspectUV.x < layerEnd)) && !isPadding then block valid
+    float layerEnd = (layerIdx + 1) * layerWidth + padding.x + neuronRadius * 2.f;
+    float isValidNeuronBlock = clamp(isInputLayer + (step(layerEnd - neuronRadius * 2.f, aspectUV.x) * step(aspectUV.x, layerEnd)), 0.f, 1.f) * (1.f - isPadding);
+    FragColor = mix(FragColor, vec4(0.f, 1.f, 0.f, 1.f), float(nodeIdx + 1)/float(neuronsCount + 1) * isValidNeuronBlock);
 }
