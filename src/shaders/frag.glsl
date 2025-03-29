@@ -17,10 +17,12 @@ layout(std430, binding = 0) buffer NeuronsBuffer { float neurons[]; };
 layout(std430, binding = 1) buffer WeightsBuffer { float weights[]; };
 layout(std430, binding = 3) buffer ForwardingLayersBuffer { ForwardingLayer layers[]; };
 
+uniform int layersCount;
+
 uniform vec4 backgroundCol = vec4(1.0);
 uniform float neuronRadius = 0.02;
 uniform float weightMinThickness = 0.0005;
-uniform float weightMaxThickness = 0.001;
+uniform float weightMaxThickness = 0.007;
 uniform float aspectRatio;  // width/height
 
 uniform float minValNeurons;
@@ -35,74 +37,27 @@ void main() {
     FragColor = backgroundCol;
     
     // Adjust for aspect ratio
-    vec2 aspectUV = uv;
-    aspectUV.x *= aspectRatio;
+    vec2 aspectUV = vec2(uv.x * aspectRatio, uv.y);  // For max uv.x = 1.f so max aspectUV.x = 1 * aspectRatio
+
+    // Add padding of radius on quad
+    vec2 padding = vec2(neuronRadius);
+    vec2 uvStart = padding;
+    vec2 uvEnd = vec2(aspectRatio, 1.f) - padding;
+    float isPadding = clamp(step(aspectUV.x, uvStart.x) + step(uvEnd.x, aspectUV.x) + step(aspectUV.y, uvStart.y) + step(uvEnd.y, aspectUV.y), 0.f, 1.f);
+    FragColor = mix(FragColor, vec4(1.f, 0.f, 0.f, 1.f), isPadding);
+
+    // Get Layer Index
+    float layersStart = uvStart.x + neuronRadius * 2.f; // Reserve space for input layer
+    float layersEnd = uvEnd.x;
+    float layerWidth = (layersEnd - layersStart)/float(layersCount);
+    int layerIdx = int((aspectUV.x - layersStart) / layerWidth);
     
-    // Draw input layer (layer 0's source neurons)
-    float inputSpacing = 1.0 / (layers[0].srcNeurons + 1);
-    for(int i = 0; i < layers[0].srcNeurons; i++) {
-        vec2 pos = vec2(0.1 * aspectRatio, inputSpacing * (i + 1));
-        float dist = distance(aspectUV, pos);
-        if(dist < neuronRadius + neuronRadius * 0.05) {
-            float activation = neurons[i];
-            float alpha = smoothstep(minValNeurons, maxValNeurons, abs(activation));
-            FragColor = dist < neuronRadius? mix(FragColor, vec4(0.0, 0.0, 1.0, alpha), alpha): vec4(0.f, 0.f, 0.f, 1.f);
-            return;
-        }
-    }
+    // if !isPadding (layerIdx < 0 || layerIdx > layersCount)
+    //layerIdx < 0 || layerIdx > layersCount ? FragColor = vec4(1.f, 0.f, 1.f, 1.f) : FragColor = mix(FragColor, vec4(0.f, 0.f, 1.f, 1.f), float(layerIdx + 1)/float(layersCount + 1));
+    float isValidLayer = clamp(step(layerIdx, 0) + step(layersCount - 1, layerIdx), 0.f, 1.f);
+    float isInputLayer = step(aspectUV.x, layersStart);
+    // Choose between blue and magenta, then choose opacity, the determine whether to display or not (!isPadding && !isInputLayer)
+    FragColor = mix(FragColor, mix(FragColor, mix(vec4(1.f, 0.f, 1.f, 1.f), vec4(0.f, 0.f, 1.f, 1.f), isValidLayer), float(layerIdx + 1)/float(layersCount + 1)), (1.f - isPadding) * (1.f - isInputLayer));
 
-    // Draw hidden + output layers and weights
-    float layerSpacing = 0.9 / (layers.length() + 1);
-    for(int layerIdx = 0; layerIdx < layers.length(); layerIdx++) {
-        ForwardingLayer layer = layers[layerIdx];
-        
-        // Current layer position
-        float layerX = 0.1 + layerSpacing * (layerIdx + 1);
-        layerX *= aspectRatio;
-        
-        // Draw current layer neurons
-        float neuronSpacing = 1.0 / (layer.dstNeurons + 1);
-        for(int n = 0; n < layer.dstNeurons; n++) {
-            vec2 pos = vec2(layerX, neuronSpacing * (n + 1));
-            float dist = distance(aspectUV, pos);
-            if(dist < neuronRadius + neuronRadius * 0.05) {
-                float activation = neurons[layer.neurons.begin + n];
-                float alpha = smoothstep(minValNeurons, maxValNeurons, abs(activation));
-                FragColor = dist < neuronRadius? mix(FragColor, vec4(0.0, 0.0, 1.0, alpha), alpha): vec4(0.f, 0.f, 0.f, 1.f);
-                return;
-            }
-        }
-
-        // Draw weights from previous layer
-        float prevLayerX = layerIdx == 0 ? 0.1 * aspectRatio : (0.1 + layerSpacing * layerIdx) * aspectRatio;
-        int prevNeurons = layer.srcNeurons;
-        float prevSpacing = 1.0 / (prevNeurons + 1);
-        
-        for(int src = 0; src < prevNeurons; src++) {
-            for(int dst = 0; dst < layer.dstNeurons; dst++) {
-                int weightIdx = layer.weights.begin + dst * prevNeurons + src;
-                float weight = weights[weightIdx];
-                
-                vec2 start = vec2(prevLayerX, prevSpacing * (src + 1));
-                vec2 end = vec2(layerX, neuronSpacing * (dst + 1));
-                
-                // Line calculation
-                vec2 dir = end - start;
-                float length = length(dir);
-                vec2 dirNorm = dir / length;
-                
-                // Weight visualization
-                float thickness = (weightMaxThickness - weightMinThickness) * smoothstep(minValWeights, maxValWeights, weight) + weightMinThickness;
-                vec2 closestPoint = start + clamp(dot(aspectUV - start, dirNorm), 0.0, length) * dirNorm;
-                float distToLine = distance(aspectUV, closestPoint);
-                
-                if(distToLine < thickness) {
-                    vec3 color = weight > 0.0 ? vec3(0.0, 1.0, 0.0) : vec3(1.0, 0.0, 0.0);
-                    float alpha = smoothstep(minValWeights, maxValWeights, abs(weight));
-                    FragColor = mix(FragColor, vec4(color, alpha * 0.7), alpha);
-                    return;
-                }
-            }
-        }
-    }
+    // TODO: Get Neuron Index on current layer
 }

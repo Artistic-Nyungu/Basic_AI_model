@@ -10,7 +10,8 @@
 #include "imgui/imgui_impl_opengl3.h"
 
 // Hyperparameters
-const int NODES_PER_LAYER[] = {784, 6, 4, 6, 10};
+// const int NODES_PER_LAYER[] = {784, 6, 4, 6, 10};
+const int NODES_PER_LAYER[] = {2, 3, 4, 3};
 const float LEARNING_RATE = 0.01;
 const int MAX_ITERATIONS = 500;
 
@@ -223,15 +224,17 @@ int main() {
     // Initialize weights to random values between -5 & 5
     float minWeight = FLT_MAX, maxWeight = FLT_MIN;
     for(int i=0; i<_nWeights; i++){
-        _weights[i] = static_cast<float>(rand()) / RAND_MAX * 10.0f - 5.0f;
+        _weights[i] = (float) rand() / (float) RAND_MAX * 10.0f - 5.0f;
         if(minWeight > _weights[i])
             minWeight = _weights[i];
         if(maxWeight < _weights[i])
             maxWeight = _weights[i];
     }
 
+    glUseProgram(_renderModule);
     glUniform1f(glGetUniformLocation(_renderModule, "minValWeights"), minWeight);
     glUniform1f(glGetUniformLocation(_renderModule, "maxValWeights"), maxWeight);
+    glUniform1i(glGetUniformLocation(_renderModule, "layersCount"), nplLength - 1);
 
 
     // Copy neurons, weights & biases to SSBO
