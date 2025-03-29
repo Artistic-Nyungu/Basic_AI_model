@@ -231,6 +231,22 @@ int main() {
             maxWeight = _weights[i];
     }
 
+    #ifdef _DEBUG
+    // Initialize neurons to random values between -5 & 5 (NOT PRACTICAL), only for debugging visualization
+    float minNeuron = FLT_MAX, maxNeuron = FLT_MIN;
+    for(int i=0; i<_nNeurons; i++){
+        _neurons[i] = (float) rand() / (float) RAND_MAX * 10.0f - 5.0f;
+        if(minNeuron > _neurons[i])
+            minNeuron = _neurons[i];
+        if(maxNeuron < _neurons[i])
+            maxNeuron = _neurons[i];
+    }
+
+    glUseProgram(_renderModule);
+    glUniform1f(glGetUniformLocation(_renderModule, "minValNeurons"), minNeuron);
+    glUniform1f(glGetUniformLocation(_renderModule, "maxValNeurons"), maxNeuron);
+    #endif
+
     glUseProgram(_renderModule);
     glUniform1f(glGetUniformLocation(_renderModule, "minValWeights"), minWeight);
     glUniform1f(glGetUniformLocation(_renderModule, "maxValWeights"), maxWeight);

@@ -21,6 +21,7 @@ uniform int layersCount;
 
 uniform vec4 backgroundCol = vec4(1.0);
 uniform float neuronRadius = 0.02;
+uniform float neuronBorder = 0.0005;
 uniform float weightMinThickness = 0.0005;
 uniform float weightMaxThickness = 0.007;
 uniform float aspectRatio;  // width/height
@@ -66,11 +67,24 @@ void main() {
     // if isInputLayer => srcNeurons, !isInputLayer => dstNeurons
     int neuronsCount = int(isInputLayer * layers[layerIdx].srcNeurons + (1.f - isInputLayer) * layers[layerIdx].dstNeurons);
     float neuronBlockHeight = (neuronsEnd - neuronsStart)/float(neuronsCount);
-    int nodeIdx = int((aspectUV.y - neuronsStart) / neuronBlockHeight);
+    int neuronIdx = int((aspectUV.y - neuronsStart) / neuronBlockHeight);
 
     // Draw neuron blocks
     // if (isInputLayer || (aspectUV.x > layerEnd - neuronRadius * 2  && aspectUV.x < layerEnd)) && !isPadding then block valid
     float layerEnd = (layerIdx + 1) * layerWidth + padding.x + neuronRadius * 2.f;
+    float neuronEnd = (neuronIdx + 1) * neuronBlockHeight + padding.y;
     float isValidNeuronBlock = clamp(isInputLayer + (step(layerEnd - neuronRadius * 2.f, aspectUV.x) * step(aspectUV.x, layerEnd)), 0.f, 1.f) * (1.f - isPadding);
-    FragColor = mix(FragColor, vec4(0.f, 1.f, 0.f, 1.f), float(nodeIdx + 1)/float(neuronsCount + 1) * isValidNeuronBlock);
+    FragColor = mix(FragColor, vec4(0.f, 1.f, 0.f, 1.f), float(neuronIdx + 1)/float(neuronsCount + 1) * isValidNeuronBlock);
+
+    // Draw neurons at midpoints of blocks
+    // midpoint (layerEnd - neuronRadius, neuronEnd - neuronBlockHeight * 0.5f)
+    vec2 neuronMidP = isInputLayer * vec2(neuronRadius + padding.x, neuronEnd - neuronBlockHeight * 0.5f) + (1.f - isInputLayer) * vec2(layerEnd - neuronRadius, neuronEnd - neuronBlockHeight * 0.5f);
+    float isValidNeuron = step(distance(aspectUV, neuronMidP), neuronRadius);
+    vec2 centerPosVec = neuronMidP - aspectUV;
+    vec2 radiusVec = normalize(centerPosVec) * neuronRadius;
+    float isNeuronBorder = step(distance(centerPosVec, radiusVec), neuronBorder);
+    int globalNeuronIdx = int((1.f - isInputLayer) * layers[layerIdx].neurons.begin) + neuronIdx;
+    FragColor = mix(FragColor, vec4(0.f, 0.f, 1.f, 1.f), smoothstep(minValNeurons, maxValNeurons, neurons[globalNeuronIdx]) * isValidNeuron);
+    FragColor = mix(FragColor, vec4(0.f, 0.f, 0.f, 1.f), isNeuronBorder);
+
 }
