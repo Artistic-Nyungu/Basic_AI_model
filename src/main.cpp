@@ -1,8 +1,10 @@
 #include <iostream>
 #include <fstream>
+#include <sstream>
 #include <cmath>
 #include <ctime>
 #include <algorithm>
+#include <unordered_map>
 #include "glad/glad.h"
 #include <GLFW/glfw3.h>
 #include "imgui/imgui.h"
@@ -11,9 +13,11 @@
 
 // Hyperparameters
 // const int NODES_PER_LAYER[] = {784, 6, 4, 6, 10};
-const int NODES_PER_LAYER[] = {2, 3, 4, 3};
+const int NODES_PER_LAYER[] = {4, 3, 4, 2, 3};
 const float LEARNING_RATE = 0.01;
 const int MAX_ITERATIONS = 500;
+
+const char* DATA_FILENAME = "./data/iris/iris.data"; // Path to the dataset
 
 struct shader
 {
@@ -21,10 +25,12 @@ struct shader
     unsigned int type;
 };
 
-const shader SHADERS[] = {{"./shaders/train.comp", GL_COMPUTE_SHADER},
-                    {"./shaders/frag.glsl", GL_FRAGMENT_SHADER},
-                    {"./shaders/vert.glsl", GL_VERTEX_SHADER}};
+const shader SHADERS[] = {{"./shaders/feedforward.comp", GL_COMPUTE_SHADER},
+                        // {"./shaders/backprop.comp", GL_COMPUTE_SHADER},
+                        {"./shaders/frag.glsl", GL_FRAGMENT_SHADER},
+                        {"./shaders/vert.glsl", GL_VERTEX_SHADER}};
 
+// Vertices for the quad (2 triangles) that we are drawing the visualization on
 const float VERTS[] = {
     -1.0f, -1.0f,
      1.0f, -1.0f,
@@ -191,6 +197,8 @@ int main() {
     // glUniform1f(glGetUniformLocation(_renderModule, "maxValNeurons"), 1.f);
     
     // NN
+    int _nTargets = 0;
+    std::unordered_map<std::string, int> _targets;
     int _nNeurons = 0, _nWeights = 0, _nBiases = 0;
     int nplLength = sizeof(NODES_PER_LAYER)/sizeof(int);
     forwardingLayer* _forwardingLayers = new forwardingLayer[nplLength - 1];
@@ -333,10 +341,44 @@ int main() {
             // Compute
             if(isTraining) {
                 glUseProgram(_computeModule);
-                for (int i = 0; i < nplLength - 1; ++i) {
-                    glUniform1i(glGetUniformLocation(_computeModule, "layerIdx"), i);
-                    glDispatchCompute((NODES_PER_LAYER[i+1] + 1)/32, 1, 1);
-                    glMemoryBarrier(GL_SHADER_STORAGE_BARRIER_BIT | GL_TEXTURE_FETCH_BARRIER_BIT);
+                // Populate input layer with a random set from the dataset
+                std::ifstream datafile(DATA_FILENAME);
+                if (!datafile.is_open()) {
+                    std::cerr << "Failed to open data file: " << DATA_FILENAME << std::endl;
+                    break;
+                }
+
+                datafile.seekg(0, std::ios::end);
+                int fileSize = datafile.tellg();
+                
+                int startByte = rand()%(fileSize); // Where to start looking for a line
+                datafile.seekg(startByte, std::ios::beg);
+                std::string line;
+                std::getline(datafile, line);
+                std::getline(datafile, line);
+                
+                if(!line.empty()){
+                    std::stringstream ss(line);
+
+                    std::string value;
+                    for(int i=0; i < 4; i++){
+                        getline(ss, value, ',');
+                        #ifdef _DEBUG
+                            std::cout << "Data file value: " << value << " of line: " << line << std::endl;
+                        #endif
+                        _neurons[i] = std::stof(value);
+                    }
+                    getline(ss, value, ',');
+                    if(_targets.find(value) == _targets.end())
+                        _targets[value] = _nTargets++;
+                    int target = _targets[value];
+                    
+                    // glUniform1i(glGetUniformLocation(_computeModule, "targetIdx"), target);
+                    for (int i = 0; i < nplLength - 1; ++i) {
+                        glUniform1i(glGetUniformLocation(_computeModule, "layerIdx"), i);
+                        glDispatchCompute((NODES_PER_LAYER[i+1] + 31)/32, 1, 1);
+                        glMemoryBarrier(GL_SHADER_STORAGE_BARRIER_BIT | GL_TEXTURE_FETCH_BARRIER_BIT);
+                    }
                 }
             }
         ImGui::EndTable();
