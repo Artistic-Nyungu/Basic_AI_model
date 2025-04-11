@@ -1,0 +1,52 @@
+#version 460 core
+#extension GL_ARB_compute_shader : require
+
+layout(local_size_x = 32, local_size_y = 1, local_size_z = 1) in;
+
+struct Range {
+    int begin;
+    int end;
+};
+
+struct ForwardingLayer {
+    Range neurons;
+    Range weights;
+    Range biases;
+    int srcNeurons;
+    int dstNeurons;
+};
+
+layout(std430, binding = 0) buffer NeuronsBuffer { float neurons[]; };
+layout(std430, binding = 1) buffer WeightsBuffer { float weights[]; };
+layout(std430, binding = 2) buffer BiasesBuffer { float biases[]; };
+layout(std430, binding = 3) buffer WeightGradientsBuffer { float weightGradients[]; };
+layout(std430, binding = 4) buffer BiasGradientsBuffer { float biasGradients[]; };
+layout(std430, binding = 5) buffer ForwardingLayersBuffer { ForwardingLayer layers[]; };
+
+uniform int nLayers;
+uniform int layerIdx;
+uniform int targetIdx;
+
+// shared float SSR = 0.f;
+
+void main() {
+    int neuronLocalIdx = int(gl_GlobalInvocationID.x);
+    int neuronGlobalIdx = layers[layerIdx].neurons.begin + neuronLocalIdx;
+
+    // return if exceeding the number of neurons in the layer
+    if(neuronGlobalIdx >= layers[layerIdx].neurons.end) return;
+
+    float dSSR_da = 0.f, da_dx = 0.f, dx_dw = 0.f, dx_db = 0.f, dx_dA = 0.f;
+
+    int nLayersFromLast = (nLayers - 1) - layerIdx;
+
+    /**
+    if(layerIdx == nLayers - 1)
+        for(int i=0; i < layers[nLayers - 1].dstNeurons; i++){
+            SSR += pow((i == targetIdx? 1.f: 0.f) - neurons[layers[nLayers - 1].neurons.begin + i], 2);
+        }
+    */
+
+    // It is established that As & 2(a - t) have to be summed up, where A is the activation of layerIdx - 1, a is the current layer's activation, then t is the target value.
+    
+}
