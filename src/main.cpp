@@ -229,6 +229,10 @@ int main() {
     float* _weights = new float[_nWeights];
     float* _biases = new float[_nBiases]{0};
 
+    // Arrays for storing the weight and bias gradients
+    float* _weightGradients = new float[_nWeights]{0};
+    float* _biasGradients = new float[_nBiases]{0};
+
     // Initialize weights to random values between -5 & 5
     float minWeight = FLT_MAX, maxWeight = FLT_MIN;
     for(int i=0; i<_nWeights; i++){
@@ -262,7 +266,7 @@ int main() {
 
 
     // Copy neurons, weights & biases to SSBO
-    const int nBuffers = 4;
+    const int nBuffers = 6;
     unsigned int _SSBOs[nBuffers];
     glGenBuffers(nBuffers, _SSBOs);
     // Neurons
@@ -280,10 +284,20 @@ int main() {
     glBufferData(GL_SHADER_STORAGE_BUFFER, _nBiases * sizeof(float), _biases, GL_DYNAMIC_DRAW);
     glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 2, _SSBOs[2]);
     glBindBuffer(GL_SHADER_STORAGE_BUFFER, 0);
-    // Forwarding Layers
+    // Weight gradients
     glBindBuffer(GL_SHADER_STORAGE_BUFFER, _SSBOs[3]);
-    glBufferData(GL_SHADER_STORAGE_BUFFER, (nplLength - 1) * sizeof(forwardingLayer), _forwardingLayers, GL_DYNAMIC_DRAW);
+    glBufferData(GL_SHADER_STORAGE_BUFFER, _nWeights * sizeof(float), _weightGradients, GL_DYNAMIC_DRAW);
     glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 3, _SSBOs[3]);
+    glBindBuffer(GL_SHADER_STORAGE_BUFFER, 0);
+    // Bias gradients
+    glBindBuffer(GL_SHADER_STORAGE_BUFFER, _SSBOs[4]);
+    glBufferData(GL_SHADER_STORAGE_BUFFER, _nBiases * sizeof(float), _biasGradients, GL_DYNAMIC_DRAW);
+    glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 4, _SSBOs[4]);
+    glBindBuffer(GL_SHADER_STORAGE_BUFFER, 0);
+    // Forwarding Layers
+    glBindBuffer(GL_SHADER_STORAGE_BUFFER, _SSBOs[5]);
+    glBufferData(GL_SHADER_STORAGE_BUFFER, (nplLength - 1) * sizeof(forwardingLayer), _forwardingLayers, GL_DYNAMIC_DRAW);
+    glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 5, _SSBOs[5]);
     glBindBuffer(GL_SHADER_STORAGE_BUFFER, 0);
 
 
